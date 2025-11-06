@@ -1,0 +1,2 @@
+Requirement already satisfied: opencv-contrib-python in c:\users\camer\onedrive\documents\projects\meta-aria-2\venv\lib\site-packages (4.12.0.88)
+Requirement already satisfied: numpy<2.3.0,>=2 in c:\users\camer\onedrive\documents\projects\meta-aria-2\venv\lib\site-packages (from opencv-contrib-python) (2.2.6)

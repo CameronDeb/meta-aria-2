@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+data/recordings/*.vrs
+data/processed/*
+outputs/reports/*
+outputs/videos/*
+*.log
+
+# Keep directory structure
+!data/recordings/.gitkeep
+!data/processed/.gitkeep
+!outputs/reports/.gitkeep
+!outputs/videos/.gitkeep
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Models (if large)
+data/models/*.pt
+data/models/*.pth
+data/models/*.h5
+
+# OS generated
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Rerun cache
+.rerun/
