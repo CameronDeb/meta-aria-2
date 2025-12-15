@@ -132,38 +132,27 @@ class MetricsCalculator:
         return stability_metrics
     
     def _calculate_stress_metrics(self, aria_data):
-        """Calculate stress indicators (simulated for now)"""
-        print("  Analyzing stress indicators...")
+        """Calculate movement-based activity metrics"""
+        print("  Analyzing movement patterns...")
         
-        # Note: Real heart rate data would come from Aria's PPG sensor
-        # For now, we'll estimate stress from motion data
-        
+        # Movement variability as activity indicator
         stress_metrics = {
-            'avg_heart_rate': 0,
-            'heart_rate_variability': 0,
-            'peak_stress_level': 0,
-            'stress_correlation': []
+            'movement_variability': 0,
+            'peak_activity_level': 0,
         }
         
         if not aria_data.get('imu_data'):
-            # Use simulated values
-            duration = aria_data['duration']
-            stress_metrics['avg_heart_rate'] = 75 + np.random.randint(-5, 15)
-            stress_metrics['heart_rate_variability'] = np.random.uniform(30, 60)
-            stress_metrics['peak_stress_level'] = np.random.uniform(5, 8)
-        else:
-            # Estimate stress from motion variability
-            imu_data = aria_data['imu_data']
-            accel_vars = [np.var(sample['accel']) for sample in imu_data]
-            
-            # Simulated heart rate based on movement
-            avg_var = np.mean(accel_vars)
-            stress_metrics['avg_heart_rate'] = int(70 + avg_var * 50)
-            stress_metrics['heart_rate_variability'] = np.std(accel_vars) * 100
-            stress_metrics['peak_stress_level'] = min(10, avg_var * 100)
+            return stress_metrics
         
-        print(f"    ✓ Estimated heart rate: {stress_metrics['avg_heart_rate']:.0f} bpm")
-        print(f"    ✓ Peak stress level: {stress_metrics['peak_stress_level']:.1f}/10")
+        # Calculate movement variability
+        imu_data = aria_data['imu_data']
+        accel_vars = [np.var(sample['accel']) for sample in imu_data]
+        
+        stress_metrics['movement_variability'] = np.mean(accel_vars)
+        stress_metrics['peak_activity_level'] = min(10, np.max(accel_vars) * 100)
+        
+        print(f"    ✓ Movement variability: {stress_metrics['movement_variability']:.4f}")
+        print(f"    ✓ Peak activity: {stress_metrics['peak_activity_level']:.1f}/10")
         
         return stress_metrics
     
@@ -174,7 +163,7 @@ class MetricsCalculator:
         performance = {
             'overall_score': 0,
             'technical_skill': 0,
-            'stress_management': 0,
+            'movement_quality': 0,
             'consistency': 0
         }
         
@@ -183,9 +172,13 @@ class MetricsCalculator:
         stability_score = metrics['stability']['visual_stability']
         performance['technical_skill'] = (motion_score + stability_score) / 2
         
-        # Stress management (inverse of stress level)
-        stress_level = metrics['stress']['peak_stress_level']
-        performance['stress_management'] = max(0, 10 - stress_level)
+        # Movement quality (from hand tracking if available)
+        if 'hand_tracking' in metrics and metrics.get('hand_tracking'):
+            smoothness = metrics['hand_tracking'].get('smoothness_score', 5)
+            efficiency = metrics['hand_tracking'].get('efficiency', 0.5) * 10
+            performance['movement_quality'] = (smoothness + efficiency) / 2
+        else:
+            performance['movement_quality'] = 5.0  # Neutral score without hand data
         
         # Consistency (low tremor + low jitter)
         tremor = metrics['motion']['avg_tremor']
@@ -195,8 +188,8 @@ class MetricsCalculator:
         # Overall score (weighted average)
         performance['overall_score'] = (
             performance['technical_skill'] * 0.4 +
-            performance['stress_management'] * 0.3 +
-            performance['consistency'] * 0.3
+            performance['movement_quality'] * 0.35 +
+            performance['consistency'] * 0.25
         ) * 10  # Scale to 0-100
         
         print(f"    ✓ Overall performance: {performance['overall_score']:.1f}/100")

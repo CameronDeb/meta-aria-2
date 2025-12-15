@@ -1,0 +1,8 @@
+{
+  "mean_confidence": 0.999912440776825,
+  "total_frames": 828,
+  "valid_frame_fraction": 0.998792290687561,
+  "valid_pose_frame_fraction_left_hand": 1.0,
+  "valid_pose_frame_fraction_right_hand": 0.998792290687561,
+  "version": "3.0.0"
+}

@@ -14,6 +14,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from detection.aria_detector import AriaDetector
 from analysis.metrics_calculator import MetricsCalculator
+from analysis.mps_analyzer import MPSDataAnalyzer
 from visualization.dashboard_generator import DashboardGenerator
 
 def main():
@@ -40,6 +41,7 @@ def main():
     # Initialize components
     detector = AriaDetector(enable_tool_detection=args.detect_tools)
     metrics_calc = MetricsCalculator()
+    mps_analyzer = MPSDataAnalyzer()
     dashboard_gen = DashboardGenerator()
     
     if args.mode == 'single':
@@ -51,7 +53,8 @@ def main():
         process_single_recording(
             args.recording, 
             detector, 
-            metrics_calc, 
+            metrics_calc,
+            mps_analyzer,
             dashboard_gen,
             args.output_dir,
             args.visualize
@@ -62,12 +65,13 @@ def main():
             args.recordings_dir,
             detector,
             metrics_calc,
+            mps_analyzer,
             dashboard_gen,
             args.output_dir,
             args.visualize
         )
 
-def process_single_recording(recording_path, detector, metrics_calc, dashboard_gen, output_dir, visualize):
+def process_single_recording(recording_path, detector, metrics_calc, mps_analyzer, dashboard_gen, output_dir, visualize):
     """Process a single Aria recording"""
     print(f"\nProcessing: {recording_path}")
     
@@ -97,9 +101,35 @@ def process_single_recording(recording_path, detector, metrics_calc, dashboard_g
     print(f"  ✓ Duration: {aria_data['duration']:.2f} seconds")
     print()
     
+    # Step 1.5: Try to load MPS data if available
+    mps_data = None
+    recording_name = Path(recording_path).stem
+    mps_folder = os.path.join('data', 'mps_data', recording_name)
+    
+    if os.path.exists(mps_folder):
+        print("[1.5/4] Loading MPS data (hand tracking, eye gaze)...")
+        try:
+            from analysis.mps_analyzer import MPSDataAnalyzer
+            mps_analyzer = MPSDataAnalyzer()
+            mps_data = mps_analyzer.load_mps_data(mps_folder)
+            print()
+        except Exception as e:
+            print(f"  ℹ Could not load MPS data: {e}")
+            print()
+    
     # Step 2: Analyze metrics
     print("[2/4] Analyzing surgical metrics...")
     metrics = metrics_calc.calculate_session_metrics(aria_data)
+    
+    # Add MPS metrics if available
+    if mps_data:
+        from analysis.mps_analyzer import MPSDataAnalyzer
+        mps_analyzer = MPSDataAnalyzer()
+        mps_metrics = mps_analyzer.generate_mps_report(mps_data, output_path)
+        metrics['hand_tracking'] = mps_metrics.get('hand_tracking', {})
+        metrics['eye_tracking'] = mps_metrics.get('eye_tracking', {})
+        print(f"  ✓ Added MPS metrics")
+    
     print(f"  ✓ Calculated {len(metrics)} metric categories")
     print()
     
@@ -129,7 +159,7 @@ def process_single_recording(recording_path, detector, metrics_calc, dashboard_g
     print("Key Metrics Summary:")
     print_metrics_summary(metrics)
 
-def process_batch_recordings(recordings_dir, detector, metrics_calc, dashboard_gen, output_dir, visualize):
+def process_batch_recordings(recordings_dir, detector, metrics_calc, mps_analyzer, dashboard_gen, output_dir, visualize):
     """Process multiple recordings in a directory"""
     print(f"\nScanning directory: {recordings_dir}")
     
@@ -155,6 +185,7 @@ def process_batch_recordings(recordings_dir, detector, metrics_calc, dashboard_g
                 str(recording_path),
                 detector,
                 metrics_calc,
+                mps_analyzer,
                 dashboard_gen,
                 output_dir,
                 visualize and i == 1  # Only visualize first recording
@@ -178,7 +209,17 @@ def print_metrics_summary(metrics):
     # Motion metrics
     if 'motion' in metrics:
         print(f"  Head Stability: {metrics['motion'].get('head_stability_score', 0):.2f}/10")
-        print(f"  Hand Tremor: {metrics['motion'].get('avg_tremor', 0):.3f}")
+        print(f"  Hand Tremor (IMU): {metrics['motion'].get('avg_tremor', 0):.3f}")
+    
+    # Hand tracking metrics (from MPS)
+    if 'hand_tracking' in metrics and metrics['hand_tracking']:
+        print(f"  Path Length: {metrics['hand_tracking'].get('path_length_m', 0):.2f}m")
+        print(f"  Hand Smoothness: {metrics['hand_tracking'].get('smoothness_score', 0):.1f}/10")
+        print(f"  Hand Tremor (MPS): {metrics['hand_tracking'].get('hand_tremor', 0):.4f}")
+    
+    # Eye tracking metrics (from MPS)
+    if 'eye_tracking' in metrics and metrics['eye_tracking']:
+        print(f"  Gaze Stability: {metrics['eye_tracking'].get('gaze_stability', 0):.1f}/10")
     
     # Stress metrics
     if 'stress' in metrics:

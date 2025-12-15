@@ -1,5 +1,6 @@
 """
 Dashboard Generator - Creates HTML reports and visualizations
+UPDATED: Removed heart rate, added expert benchmarks, better training recommendations
 """
 
 import os
@@ -13,8 +14,20 @@ import numpy as np
 class DashboardGenerator:
     """Generate performance dashboards and reports"""
     
+    # Expert benchmark values for comparison
+    EXPERT_BENCHMARKS = {
+        'head_stability': 9.5,
+        'visual_stability': 9.0,
+        'gaze_stability': 9.5,
+        'path_length_m': 1.5,  # Lower is better
+        'smoothness_score': 8.0,
+        'hand_tremor': 0.003,  # Lower is better
+        'efficiency': 0.6,
+        'avg_tremor': 0.03,  # Lower is better
+    }
+    
     def __init__(self):
-        self.report_template = self._load_template()
+        pass
     
     def generate_report(self, session_name, metrics, aria_data, output_path):
         """Generate complete performance report"""
@@ -23,9 +36,9 @@ class DashboardGenerator:
         charts_dir = os.path.join(output_path, 'charts')
         os.makedirs(charts_dir, exist_ok=True)
         
-        self._create_motion_chart(metrics['motion'], charts_dir)
-        self._create_stress_chart(metrics['stress'], aria_data, charts_dir)
-        self._create_performance_chart(metrics['performance'], charts_dir)
+        self._create_skill_radar_chart(metrics, charts_dir)
+        self._create_hand_movement_chart(metrics, charts_dir)
+        self._create_improvement_areas_chart(metrics, charts_dir)
         
         # Generate HTML report
         html_path = os.path.join(output_path, 'report.html')
@@ -37,212 +50,497 @@ class DashboardGenerator:
         
         return html_path
     
-    def _create_motion_chart(self, motion_metrics, output_dir):
-        """Create motion analysis chart"""
-        fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+    def _create_skill_radar_chart(self, metrics, output_dir):
+        """Create radar chart comparing current performance to expert level"""
+        categories = []
+        current_scores = []
+        expert_scores = []
         
-        # Head stability
-        ax = axes[0]
-        stability_score = motion_metrics['head_stability_score']
-        ax.barh(['Head Stability'], [stability_score], color='#4CAF50')
-        ax.set_xlim(0, 10)
-        ax.set_xlabel('Score (0-10)')
-        ax.set_title('Head Stability Analysis')
-        ax.grid(axis='x', alpha=0.3)
+        # Collect metrics for radar chart (normalize to 0-10 scale)
+        if 'motion' in metrics:
+            categories.append('Head\nStability')
+            current_scores.append(metrics['motion']['head_stability_score'])
+            expert_scores.append(self.EXPERT_BENCHMARKS['head_stability'])
         
-        # Tremor over time
-        ax = axes[1]
-        if motion_metrics.get('tremor_per_frame'):
-            tremor_data = motion_metrics['tremor_per_frame']
-            frames = range(len(tremor_data))
-            ax.plot(frames, tremor_data, color='#2196F3', linewidth=2)
-            ax.fill_between(frames, tremor_data, alpha=0.3, color='#2196F3')
-            ax.set_xlabel('Frame')
-            ax.set_ylabel('Tremor Magnitude')
-            ax.set_title('Hand Tremor Over Time')
-            ax.grid(alpha=0.3)
+        if 'stability' in metrics:
+            categories.append('Visual\nStability')
+            current_scores.append(metrics['stability']['visual_stability'])
+            expert_scores.append(self.EXPERT_BENCHMARKS['visual_stability'])
         
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, 'motion_analysis.png'), dpi=150, bbox_inches='tight')
-        plt.close()
-    
-    def _create_stress_chart(self, stress_metrics, aria_data, output_dir):
-        """Create stress analysis chart"""
-        fig, ax = plt.subplots(figsize=(10, 6))
+        if 'eye_tracking' in metrics and metrics['eye_tracking']:
+            categories.append('Gaze\nStability')
+            current_scores.append(metrics['eye_tracking'].get('gaze_stability', 0))
+            expert_scores.append(self.EXPERT_BENCHMARKS['gaze_stability'])
         
-        # Simulated heart rate over time
-        duration = aria_data['duration']
-        time_points = np.linspace(0, duration, 100)
+        if 'hand_tracking' in metrics and metrics['hand_tracking']:
+            categories.append('Hand\nSmoothness')
+            current_scores.append(metrics['hand_tracking'].get('smoothness_score', 0))
+            expert_scores.append(self.EXPERT_BENCHMARKS['smoothness_score'])
+            
+            categories.append('Movement\nEfficiency')
+            efficiency = metrics['hand_tracking'].get('efficiency', 0) * 10
+            current_scores.append(efficiency)
+            expert_scores.append(self.EXPERT_BENCHMARKS['efficiency'] * 10)
         
-        # Generate simulated HR pattern
-        avg_hr = stress_metrics['avg_heart_rate']
-        hr_variation = stress_metrics['heart_rate_variability']
-        heart_rate = avg_hr + np.random.normal(0, hr_variation/10, len(time_points))
-        
-        ax.plot(time_points, heart_rate, color='#F44336', linewidth=2, label='Heart Rate')
-        ax.axhline(y=avg_hr, color='gray', linestyle='--', alpha=0.5, label=f'Average: {avg_hr:.0f} bpm')
-        ax.fill_between(time_points, heart_rate, avg_hr, alpha=0.2, color='#F44336')
-        
-        ax.set_xlabel('Time (seconds)')
-        ax.set_ylabel('Heart Rate (bpm)')
-        ax.set_title('Stress Indicators During Session')
-        ax.legend()
-        ax.grid(alpha=0.3)
-        
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, 'stress_analysis.png'), dpi=150, bbox_inches='tight')
-        plt.close()
-    
-    def _create_performance_chart(self, performance_metrics, output_dir):
-        """Create overall performance radar chart"""
-        categories = ['Technical\nSkill', 'Stress\nManagement', 'Consistency']
-        values = [
-            performance_metrics['technical_skill'],
-            performance_metrics['stress_management'],
-            performance_metrics['consistency']
-        ]
+        if len(categories) < 3:
+            return  # Need at least 3 metrics for radar chart
         
         # Create radar chart
         angles = np.linspace(0, 2 * np.pi, len(categories), endpoint=False).tolist()
-        values += values[:1]  # Complete the circle
+        current_scores += current_scores[:1]
+        expert_scores += expert_scores[:1]
         angles += angles[:1]
         
-        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
+        fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection='polar'))
         
-        ax.plot(angles, values, 'o-', linewidth=2, color='#9C27B0')
-        ax.fill(angles, values, alpha=0.25, color='#9C27B0')
+        ax.plot(angles, expert_scores, 'o-', linewidth=2, label='Expert Level', color='#4CAF50')
+        ax.fill(angles, expert_scores, alpha=0.15, color='#4CAF50')
+        
+        ax.plot(angles, current_scores, 'o-', linewidth=2, label='Your Performance', color='#2196F3')
+        ax.fill(angles, current_scores, alpha=0.25, color='#2196F3')
+        
         ax.set_xticks(angles[:-1])
-        ax.set_xticklabels(categories)
+        ax.set_xticklabels(categories, size=11)
         ax.set_ylim(0, 10)
         ax.set_yticks([2, 4, 6, 8, 10])
-        ax.set_title('Performance Profile', size=16, pad=20)
-        ax.grid(True)
+        ax.set_yticklabels(['2', '4', '6', '8', '10'], size=9)
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=11)
+        ax.set_title('Surgical Skills Assessment', size=14, weight='bold', pad=20)
         
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, 'performance_radar.png'), dpi=150, bbox_inches='tight')
+        plt.savefig(os.path.join(output_dir, 'skill_radar.png'), dpi=150, bbox_inches='tight')
         plt.close()
     
-    def _create_html_report(self, session_name, metrics, aria_data, output_path, charts_dir):
-        """Create HTML report"""
+    def _create_hand_movement_chart(self, metrics, output_dir):
+        """Create chart showing hand movement metrics"""
+        if 'hand_tracking' not in metrics or not metrics['hand_tracking']:
+            return
         
-        html_content = f"""
-<!DOCTYPE html>
-<html lang="en">
+        ht = metrics['hand_tracking']
+        
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        
+        # Path Length comparison
+        ax = axes[0, 0]
+        current_path = ht.get('path_length_m', 0)
+        expert_path = self.EXPERT_BENCHMARKS['path_length_m']
+        
+        bars = ax.bar(['Your Path', 'Expert Path'], [current_path, expert_path], 
+                      color=['#FF5722', '#4CAF50'])
+        ax.set_ylabel('Distance (meters)', fontsize=11)
+        ax.set_title('Path Length (Lower is Better)', fontsize=12, weight='bold')
+        ax.set_ylim(0, max(current_path, expert_path) * 1.2)
+        
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{height:.2f}m', ha='center', va='bottom', fontsize=10)
+        
+        # Smoothness comparison
+        ax = axes[0, 1]
+        current_smooth = ht.get('smoothness_score', 0)
+        expert_smooth = self.EXPERT_BENCHMARKS['smoothness_score']
+        
+        bars = ax.bar(['Your Smoothness', 'Expert Smoothness'], [current_smooth, expert_smooth],
+                      color=['#FF9800', '#4CAF50'])
+        ax.set_ylabel('Score (0-10)', fontsize=11)
+        ax.set_title('Movement Smoothness (Higher is Better)', fontsize=12, weight='bold')
+        ax.set_ylim(0, 10)
+        
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{height:.1f}', ha='center', va='bottom', fontsize=10)
+        
+        # Tremor comparison
+        ax = axes[1, 0]
+        current_tremor = ht.get('hand_tremor', 0)
+        expert_tremor = self.EXPERT_BENCHMARKS['hand_tremor']
+        
+        bars = ax.bar(['Your Tremor', 'Expert Tremor'], [current_tremor, expert_tremor],
+                      color=['#F44336', '#4CAF50'])
+        ax.set_ylabel('Tremor Magnitude', fontsize=11)
+        ax.set_title('Hand Tremor (Lower is Better)', fontsize=12, weight='bold')
+        ax.set_ylim(0, max(current_tremor, expert_tremor) * 1.2)
+        
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{height:.4f}', ha='center', va='bottom', fontsize=10)
+        
+        # Efficiency comparison
+        ax = axes[1, 1]
+        current_eff = ht.get('efficiency', 0)
+        expert_eff = self.EXPERT_BENCHMARKS['efficiency']
+        
+        bars = ax.bar(['Your Efficiency', 'Expert Efficiency'], [current_eff, expert_eff],
+                      color=['#FFC107', '#4CAF50'])
+        ax.set_ylabel('Efficiency (0-1)', fontsize=11)
+        ax.set_title('Movement Efficiency (Higher is Better)', fontsize=12, weight='bold')
+        ax.set_ylim(0, 1.0)
+        
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{height:.2f}', ha='center', va='bottom', fontsize=10)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'hand_movement.png'), dpi=150, bbox_inches='tight')
+        plt.close()
+    
+    def _create_improvement_areas_chart(self, metrics, output_dir):
+        """Create chart showing areas needing improvement"""
+        areas = []
+        gaps = []
+        colors = []
+        
+        # Calculate gaps from expert performance
+        if 'motion' in metrics:
+            head_gap = self.EXPERT_BENCHMARKS['head_stability'] - metrics['motion']['head_stability_score']
+            if head_gap > 0.5:
+                areas.append('Head Stability')
+                gaps.append(head_gap)
+                colors.append('#2196F3')
+        
+        if 'stability' in metrics:
+            visual_gap = self.EXPERT_BENCHMARKS['visual_stability'] - metrics['stability']['visual_stability']
+            if visual_gap > 0.5:
+                areas.append('Visual Stability')
+                gaps.append(visual_gap)
+                colors.append('#03A9F4')
+        
+        if 'hand_tracking' in metrics and metrics['hand_tracking']:
+            smooth_gap = self.EXPERT_BENCHMARKS['smoothness_score'] - metrics['hand_tracking'].get('smoothness_score', 0)
+            if smooth_gap > 1.0:
+                areas.append('Hand Smoothness')
+                gaps.append(smooth_gap)
+                colors.append('#FF5722')
+            
+            eff_gap = self.EXPERT_BENCHMARKS['efficiency'] - metrics['hand_tracking'].get('efficiency', 0)
+            if eff_gap > 0.2:
+                areas.append('Movement Efficiency')
+                gaps.append(eff_gap * 10)  # Scale to 0-10
+                colors.append('#FF9800')
+            
+            tremor_current = metrics['hand_tracking'].get('hand_tremor', 0)
+            tremor_gap = (tremor_current - self.EXPERT_BENCHMARKS['hand_tremor']) / self.EXPERT_BENCHMARKS['hand_tremor'] * 2
+            if tremor_gap > 1.0:
+                areas.append('Hand Tremor')
+                gaps.append(min(tremor_gap, 10))
+                colors.append('#F44336')
+        
+        if not areas:
+            # No significant gaps - create positive chart
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.text(0.5, 0.5, '🎉 Excellent Performance!\nAll metrics near expert level',
+                   ha='center', va='center', fontsize=18, weight='bold')
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.axis('off')
+        else:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            y_pos = np.arange(len(areas))
+            
+            bars = ax.barh(y_pos, gaps, color=colors)
+            ax.set_yticks(y_pos)
+            ax.set_yticklabels(areas, fontsize=11)
+            ax.set_xlabel('Gap from Expert Level', fontsize=11)
+            ax.set_title('Priority Training Areas', fontsize=14, weight='bold')
+            ax.invert_yaxis()
+            
+            for i, bar in enumerate(bars):
+                width = bar.get_width()
+                ax.text(width, bar.get_y() + bar.get_height()/2.,
+                       f' {width:.1f}', ha='left', va='center', fontsize=10)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'improvement_areas.png'), dpi=150, bbox_inches='tight')
+        plt.close()
+    
+    def _generate_recommendations(self, metrics):
+        """Generate specific training recommendations"""
+        recommendations = []
+        
+        # Check hand tracking metrics
+        if 'hand_tracking' in metrics and metrics['hand_tracking']:
+            ht = metrics['hand_tracking']
+            
+            path_length = ht.get('path_length_m', 0)
+            if path_length > 3.0:
+                recommendations.append({
+                    'priority': 'HIGH',
+                    'area': 'Path Length',
+                    'issue': f'Your hands traveled {path_length:.1f}m (expert: ~1.5m)',
+                    'advice': 'Plan movements before executing. Practice deliberate, direct movements to the target. Avoid unnecessary adjustments.'
+                })
+            
+            smoothness = ht.get('smoothness_score', 0)
+            if smoothness < 5.0:
+                recommendations.append({
+                    'priority': 'HIGH',
+                    'area': 'Movement Smoothness',
+                    'issue': f'Smoothness score: {smoothness:.1f}/10 (expert: ~8/10)',
+                    'advice': 'Practice slow, controlled movements. Focus on continuous motion without stops or jerks. Use simulator for repetitive practice.'
+                })
+            
+            efficiency = ht.get('efficiency', 0)
+            if efficiency < 0.3:
+                recommendations.append({
+                    'priority': 'MEDIUM',
+                    'area': 'Movement Efficiency',
+                    'issue': f'Only {efficiency*100:.0f}% efficient (expert: ~60%)',
+                    'advice': 'Reduce backtracking and corrections. Visualize the path before moving. Work on hand-eye coordination exercises.'
+                })
+            
+            tremor = ht.get('hand_tremor', 0)
+            if tremor > 0.01:
+                recommendations.append({
+                    'priority': 'MEDIUM',
+                    'area': 'Hand Tremor',
+                    'issue': f'Tremor: {tremor:.4f} (expert: <0.003)',
+                    'advice': 'Practice hand steadiness exercises. Ensure proper rest before procedures. Consider ergonomic adjustments to reduce fatigue.'
+                })
+        
+        # Check stability metrics
+        if 'motion' in metrics:
+            head_stab = metrics['motion']['head_stability_score']
+            if head_stab < 8.0:
+                recommendations.append({
+                    'priority': 'MEDIUM',
+                    'area': 'Head Stability',
+                    'issue': f'Head stability: {head_stab:.1f}/10',
+                    'advice': 'Maintain steady head position. Adjust workstation height for comfort. Minimize unnecessary head movements.'
+                })
+        
+        if 'eye_tracking' in metrics and metrics['eye_tracking']:
+            gaze_stab = metrics['eye_tracking'].get('gaze_stability', 0)
+            if gaze_stab < 8.0:
+                recommendations.append({
+                    'priority': 'LOW',
+                    'area': 'Gaze Stability',
+                    'issue': f'Gaze stability: {gaze_stab:.1f}/10',
+                    'advice': 'Practice maintaining visual focus on operative field. Reduce rapid eye movements between instruments and target.'
+                })
+        
+        # Sort by priority
+        priority_order = {'HIGH': 0, 'MEDIUM': 1, 'LOW': 2}
+        recommendations.sort(key=lambda x: priority_order[x['priority']])
+        
+        return recommendations
+    
+    def _create_html_report(self, session_name, metrics, aria_data, output_path, charts_dir):
+        """Create HTML report with all metrics and visualizations"""
+        
+        recommendations = self._generate_recommendations(metrics)
+        
+        html_content = f"""<!DOCTYPE html>
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Surgical Training Analysis - {session_name}</title>
     <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 20px;
             color: #333;
         }}
+        
         .container {{
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
-            border-radius: 12px;
+            border-radius: 15px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             overflow: hidden;
         }}
+        
         header {{
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 40px;
             text-align: center;
         }}
-        h1 {{ font-size: 2.5em; margin-bottom: 10px; }}
-        .subtitle {{ font-size: 1.1em; opacity: 0.9; }}
+        
+        header h1 {{
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }}
+        
+        .subtitle {{
+            font-size: 1.1em;
+            opacity: 0.9;
+        }}
         
         .metrics-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 20px;
-            padding: 30px;
-        }}
-        .metric-card {{
+            padding: 40px;
             background: #f8f9fa;
-            padding: 25px;
-            border-radius: 8px;
-            border-left: 4px solid;
         }}
-        .metric-card.motion {{ border-color: #4CAF50; }}
-        .metric-card.stress {{ border-color: #F44336; }}
-        .metric-card.performance {{ border-color: #9C27B0; }}
         
-        .metric-label {{ 
-            font-size: 0.9em; 
-            color: #666; 
-            text-transform: uppercase;
-            margin-bottom: 8px;
+        .metric-card {{
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
         }}
-        .metric-value {{ 
-            font-size: 2.5em; 
-            font-weight: bold; 
+        
+        .metric-card:hover {{
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }}
+        
+        .metric-card.performance {{
+            border-left: 5px solid #9C27B0;
+        }}
+        
+        .metric-card.motion {{
+            border-left: 5px solid #2196F3;
+        }}
+        
+        .metric-card.hand {{
+            border-left: 5px solid #FF5722;
+        }}
+        
+        .metric-card.eye {{
+            border-left: 5px solid #4CAF50;
+        }}
+        
+        .metric-label {{
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }}
+        
+        .metric-value {{
+            font-size: 2.5em;
+            font-weight: bold;
             color: #333;
         }}
-        .metric-unit {{ font-size: 0.5em; color: #999; }}
+        
+        .metric-unit {{
+            font-size: 0.5em;
+            color: #999;
+            margin-left: 5px;
+        }}
         
         .charts-section {{
-            padding: 30px;
-            background: #fafafa;
+            padding: 40px;
         }}
+        
         .chart-container {{
+            margin-bottom: 40px;
             background: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }}
+        
+        .chart-title {{
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #333;
+        }}
+        
         .chart-container img {{
             width: 100%;
             height: auto;
-            border-radius: 4px;
+            border-radius: 8px;
         }}
-        .chart-title {{
-            font-size: 1.3em;
-            margin-bottom: 15px;
+        
+        .recommendations-section {{
+            padding: 40px;
+            background: #f8f9fa;
+        }}
+        
+        .recommendations-title {{
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 30px;
             color: #333;
         }}
         
-        .summary {{
-            padding: 30px;
+        .recommendation {{
             background: white;
-        }}
-        .summary h2 {{
-            font-size: 1.8em;
+            padding: 25px;
+            border-radius: 12px;
             margin-bottom: 20px;
-            color: #333;
+            border-left: 5px solid #ccc;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }}
-        .summary-item {{
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 6px;
+        
+        .recommendation.high {{
+            border-left-color: #F44336;
+        }}
+        
+        .recommendation.medium {{
+            border-left-color: #FF9800;
+        }}
+        
+        .recommendation.low {{
+            border-left-color: #4CAF50;
+        }}
+        
+        .rec-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 15px;
         }}
         
-        footer {{
-            padding: 20px;
-            text-align: center;
-            color: #666;
-            background: #f8f9fa;
-            font-size: 0.9em;
+        .rec-area {{
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
         }}
         
-        .score-badge {{
-            display: inline-block;
-            padding: 8px 16px;
+        .rec-priority {{
+            padding: 5px 15px;
             border-radius: 20px;
+            font-size: 0.85em;
             font-weight: bold;
             color: white;
         }}
-        .score-excellent {{ background: #4CAF50; }}
-        .score-good {{ background: #8BC34A; }}
-        .score-fair {{ background: #FFC107; }}
-        .score-poor {{ background: #F44336; }}
+        
+        .rec-priority.high {{
+            background: #F44336;
+        }}
+        
+        .rec-priority.medium {{
+            background: #FF9800;
+        }}
+        
+        .rec-priority.low {{
+            background: #4CAF50;
+        }}
+        
+        .rec-issue {{
+            color: #666;
+            margin-bottom: 10px;
+            font-size: 1.05em;
+        }}
+        
+        .rec-advice {{
+            color: #333;
+            font-size: 1.05em;
+            line-height: 1.6;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }}
     </style>
 </head>
 <body>
@@ -269,23 +567,9 @@ class DashboardGenerator:
             </div>
             
             <div class="metric-card motion">
-                <div class="metric-label">Average Tremor</div>
+                <div class="metric-label">Visual Stability</div>
                 <div class="metric-value">
-                    {metrics['motion']['avg_tremor']:.3f}
-                </div>
-            </div>
-            
-            <div class="metric-card stress">
-                <div class="metric-label">Avg Heart Rate</div>
-                <div class="metric-value">
-                    {metrics['stress']['avg_heart_rate']:.0f}<span class="metric-unit">bpm</span>
-                </div>
-            </div>
-            
-            <div class="metric-card stress">
-                <div class="metric-label">Peak Stress Level</div>
-                <div class="metric-value">
-                    {metrics['stress']['peak_stress_level']:.1f}<span class="metric-unit">/10</span>
+                    {metrics['stability']['visual_stability']:.1f}<span class="metric-unit">/10</span>
                 </div>
             </div>
             
@@ -294,122 +578,126 @@ class DashboardGenerator:
                 <div class="metric-value">
                     {aria_data['duration']:.1f}<span class="metric-unit">sec</span>
                 </div>
+            </div>"""
+        
+        # Add hand tracking metrics if available
+        if 'hand_tracking' in metrics and metrics['hand_tracking']:
+            html_content += f"""
+            
+            <div class="metric-card hand">
+                <div class="metric-label">Path Length</div>
+                <div class="metric-value">
+                    {metrics['hand_tracking'].get('path_length_m', 0):.2f}<span class="metric-unit">m</span>
+                </div>
             </div>
+            
+            <div class="metric-card hand">
+                <div class="metric-label">Hand Smoothness</div>
+                <div class="metric-value">
+                    {metrics['hand_tracking'].get('smoothness_score', 0):.1f}<span class="metric-unit">/10</span>
+                </div>
+            </div>
+            
+            <div class="metric-card hand">
+                <div class="metric-label">Movement Efficiency</div>
+                <div class="metric-value">
+                    {metrics['hand_tracking'].get('efficiency', 0):.2f}
+                </div>
+            </div>
+            
+            <div class="metric-card hand">
+                <div class="metric-label">Hand Tremor</div>
+                <div class="metric-value">
+                    {metrics['hand_tracking'].get('hand_tremor', 0):.4f}
+                </div>
+            </div>"""
+        
+        # Add eye tracking metrics if available  
+        if 'eye_tracking' in metrics and metrics['eye_tracking']:
+            html_content += f"""
+            
+            <div class="metric-card eye">
+                <div class="metric-label">Gaze Stability</div>
+                <div class="metric-value">
+                    {metrics['eye_tracking'].get('gaze_stability', 0):.1f}<span class="metric-unit">/10</span>
+                </div>
+            </div>
+            
+            <div class="metric-card eye">
+                <div class="metric-label">Working Distance</div>
+                <div class="metric-value">
+                    {metrics['eye_tracking'].get('avg_gaze_depth_m', 0):.2f}<span class="metric-unit">m</span>
+                </div>
+            </div>"""
+        
+        html_content += """
         </div>
         
         <div class="charts-section">
             <div class="chart-container">
-                <div class="chart-title">📊 Motion Analysis</div>
-                <img src="charts/motion_analysis.png" alt="Motion Analysis">
-            </div>
+                <div class="chart-title">📊 Surgical Skills Radar</div>
+                <img src="charts/skill_radar.png" alt="Skills Radar">
+            </div>"""
+        
+        if 'hand_tracking' in metrics and metrics['hand_tracking']:
+            html_content += """
             
             <div class="chart-container">
-                <div class="chart-title">❤️ Stress Indicators</div>
-                <img src="charts/stress_analysis.png" alt="Stress Analysis">
-            </div>
+                <div class="chart-title">✋ Hand Movement Analysis</div>
+                <img src="charts/hand_movement.png" alt="Hand Movement">
+            </div>"""
+        
+        html_content += """
             
             <div class="chart-container">
-                <div class="chart-title">🎯 Performance Profile</div>
-                <img src="charts/performance_radar.png" alt="Performance Profile">
+                <div class="chart-title">🎯 Priority Training Areas</div>
+                <img src="charts/improvement_areas.png" alt="Improvement Areas">
             </div>
         </div>
         
-        <div class="summary">
-            <h2>Summary & Recommendations</h2>
-            
-            <div class="summary-item">
-                <strong>Performance Rating:</strong>
-                {self._get_performance_badge(metrics['performance']['overall_score'])}
-            </div>
-            
-            <div class="summary-item">
-                <strong>Key Strengths:</strong><br>
-                {self._get_strengths(metrics)}
-            </div>
-            
-            <div class="summary-item">
-                <strong>Areas for Improvement:</strong><br>
-                {self._get_improvements(metrics)}
-            </div>
-            
-            <div class="summary-item">
-                <strong>Next Steps:</strong><br>
-                • Continue practicing with focus on identified weaknesses<br>
-                • Review video recording for technique refinement<br>
-                • Compare with previous sessions to track progress<br>
-                • Consider stress management techniques for high-pressure moments
-            </div>
-        </div>
+        <div class="recommendations-section">
+            <div class="recommendations-title">💡 Personalized Training Recommendations</div>"""
         
-        <footer>
-            <p>Generated by Meta Aria 2 Surgical Training Analysis System</p>
-            <p>Data recorded: {aria_data['num_frames']} frames | {aria_data['duration']:.1f} seconds</p>
-        </footer>
+        if recommendations:
+            for rec in recommendations:
+                html_content += f"""
+            <div class="recommendation {rec['priority'].lower()}">
+                <div class="rec-header">
+                    <div class="rec-area">{rec['area']}</div>
+                    <div class="rec-priority {rec['priority'].lower()}">{rec['priority']}</div>
+                </div>
+                <div class="rec-issue">{rec['issue']}</div>
+                <div class="rec-advice"><strong>Recommendation:</strong> {rec['advice']}</div>
+            </div>"""
+        else:
+            html_content += """
+            <div class="recommendation low">
+                <div class="rec-header">
+                    <div class="rec-area">Excellent Performance!</div>
+                    <div class="rec-priority low">GREAT</div>
+                </div>
+                <div class="rec-advice">Your performance is at or near expert level across all measured metrics. Continue practicing to maintain these skills.</div>
+            </div>"""
+        
+        html_content += """
+        </div>
     </div>
 </body>
-</html>
-"""
+</html>"""
         
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
     
-    def _get_performance_badge(self, score):
-        """Get HTML badge for performance score"""
-        if score >= 80:
-            return '<span class="score-badge score-excellent">Excellent</span>'
-        elif score >= 60:
-            return '<span class="score-badge score-good">Good</span>'
-        elif score >= 40:
-            return '<span class="score-badge score-fair">Fair</span>'
-        else:
-            return '<span class="score-badge score-poor">Needs Improvement</span>'
-    
-    def _get_strengths(self, metrics):
-        """Identify key strengths"""
-        strengths = []
-        
-        if metrics['motion']['head_stability_score'] >= 7:
-            strengths.append("Excellent head stability")
-        if metrics['motion']['avg_tremor'] < 0.05:
-            strengths.append("Minimal hand tremor")
-        if metrics['stress']['peak_stress_level'] < 5:
-            strengths.append("Good stress management")
-        
-        return "<br>• ".join([""] + strengths) if strengths else "Continue building core skills"
-    
-    def _get_improvements(self, metrics):
-        """Identify areas for improvement"""
-        improvements = []
-        
-        if metrics['motion']['head_stability_score'] < 5:
-            improvements.append("Work on maintaining steady head position")
-        if metrics['motion']['avg_tremor'] > 0.1:
-            improvements.append("Practice hand steadiness exercises")
-        if metrics['stress']['peak_stress_level'] > 7:
-            improvements.append("Develop stress management techniques")
-        
-        return "<br>• ".join([""] + improvements) if improvements else "Maintain current performance level"
-    
     def _save_metrics_json(self, metrics, aria_data, output_path):
         """Save metrics as JSON for further analysis"""
-        data = {
-            'timestamp': datetime.now().isoformat(),
+        export_data = {
             'session_info': {
-                'duration': aria_data['duration'],
-                'num_frames': aria_data['num_frames'],
-                'recording_path': aria_data['recording_path']
+                'timestamp': datetime.now().isoformat(),
+                'duration_seconds': aria_data['duration'],
+                'num_frames': aria_data['num_frames']
             },
-            'metrics': {
-                'motion': {k: v for k, v in metrics['motion'].items() if not isinstance(v, list)},
-                'stability': metrics['stability'],
-                'stress': metrics['stress'],
-                'performance': metrics['performance']
-            }
+            'metrics': metrics
         }
         
         with open(output_path, 'w') as f:
-            json.dump(data, f, indent=2)
-    
-    def _load_template(self):
-        """Load HTML template (placeholder)"""
-        return ""
+            json.dump(export_data, f, indent=2)
